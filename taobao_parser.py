@@ -361,14 +361,25 @@ async def main():
     username, password = load_creds()
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+        browser = await p.chromium.launch(headless=True, args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-dev-shm-usage",
+        ])
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}, locale="zh-CN")
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}, locale="zh-CN",
+            extra_http_headers={
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            })
         if COOKIE_FILE.exists():
             try: await context.add_cookies(json.loads(COOKIE_FILE.read_text(encoding="utf-8")))
             except: pass
         page = await context.new_page()
+        # Hide webdriver flag that exposes headless mode
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        """)
         
         login_result = await do_login(page, username, password, sms_code)
         if isinstance(login_result, dict):
