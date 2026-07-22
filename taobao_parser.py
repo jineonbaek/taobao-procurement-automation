@@ -60,6 +60,33 @@ async def extract_current_price(page) -> str:
     return ""
 
 
+async def get_selected_sku(page) -> str:
+    """Find the currently selected SKU variant name on the page.
+    Returns the SKU name if one is already selected, empty string otherwise."""
+    selected_selectors = [
+        ".tb-selected span",
+        ".tb-selected a",
+        ".tb-selected",
+        ".SKU--selected",
+        "li.active span",
+        "li.selected span",
+        "li.tb-active",
+        '[aria-selected="true"]',
+        ".sku-item.selected",
+        ".sku-item.active",
+    ]
+    for sel in selected_selectors:
+        try:
+            el = await page.query_selector(sel)
+            if el:
+                name = (await el.inner_text()).strip()[:60]
+                if name:
+                    return name
+        except Exception:
+            continue
+    return ""
+
+
 async def detect_sku_prices(page) -> list:
     """Click through SKU variant options and capture price for each.
     Returns list of {sku_name, price} dicts."""
@@ -235,19 +262,35 @@ async def parse_product(page, url: str) -> dict:
     id_m = re.search(r'(?:id=|item/|itemId=)(\d+)', final_url)
     if id_m: item_id = id_m.group(1)
 
-    # Try to detect SKU-specific prices by clicking variants
-    print("[parse] Detecting SKU prices...", flush=True)
-    sku_prices = await detect_sku_prices(page)
-
     items = []
-    if sku_prices:
-        for sp in sku_prices:
-            items.append({"sku": sp["sku"], "price": sp["price"]})
-        print(f"[parse] Found {len(items)} SKU variants", flush=True)
-    else:
-        # Fallback: use default price with best-effort SKU name
-        items.append({"sku": sku_text, "price": price})
-        print("[parse] No SKU variants detected, using default price", flush=True)
+
+    # First: check if URL already targets a specific SKU (user selected variant before sharing)
+    sku_id_from_url = ""
+    sku_id_m = re.search(r'[?&]skuId=(\d+)', final_url)
+    if sku_id_m:
+        sku_id_from_url = sku_id_m.group(1)
+        print(f"[parse] SKU detected in URL: {sku_id_from_url}", flush=True)
+
+    # Try to read the already-selected SKU on the current page
+    selected_sku = await get_selected_sku(page)
+    if selected_sku:
+        current_price = await extract_current_price(page)
+        if current_price:
+            items.append({"sku": selected_sku, "price": current_price})
+            print(f"[parse] Pre-selected SKU: [{selected_sku}] {current_price}", flush=True)
+
+    # If no pre-selected SKU found, click through all variants
+    if not items:
+        print("[parse] No pre-selected SKU, detecting all variants...", flush=True)
+        sku_prices = await detect_sku_prices(page)
+        if sku_prices:
+            for sp in sku_prices:
+                items.append({"sku": sp["sku"], "price": sp["price"]})
+            print(f"[parse] Found {len(items)} SKU variants", flush=True)
+        else:
+            # Last resort: use default price with best-effort SKU name
+            items.append({"sku": sku_text, "price": price})
+            print("[parse] No SKU variants detected, using default price", flush=True)
 
     return {"ok": True, "title": title, "items": items,
             "shop": shop, "item_id": item_id, "final_url": final_url, "short_url": url}
