@@ -26,6 +26,137 @@ def load_creds():
             creds[k.strip()] = v.strip()
     return creds.get("TAOBAO_USERNAME"), creds.get("TAOBAO_PASSWORD")
 
+async def extract_current_price(page) -> str:
+    """Read the current displayed price from the page."""
+    # Try specific price elements first (more accurate than body text)
+    price_selectors = [
+        '.tm-price .tm-count',
+        '#J_StrPrice .tb-rmb-num',
+        '#J_PromoPriceNum',
+        '.tb-rmb-num',
+        '.tm-count',
+        'em.tb-rmb-num',
+    ]
+    for sel in price_selectors:
+        try:
+            el = await page.query_selector(sel)
+            if el:
+                text = (await el.inner_text()).strip()
+                if text:
+                    return "¥" + text
+        except Exception:
+            continue
+
+    # Fallback: scan body text for prices
+    try:
+        body = (await page.inner_text("body"))[:10000]
+        prices = re.findall(r'[\xa5￥]\s*([\d,.]+)', body)
+        for p in prices:
+            val = float(p.replace(",", ""))
+            if 0 < val < 500000:
+                return "¥" + p
+    except Exception:
+        pass
+    return ""
+
+
+async def get_selected_sku(page) -> str:
+    """Find the currently selected SKU variant name on the page.
+    Returns the SKU name if one is already selected, empty string otherwise."""
+    selected_selectors = [
+        ".tb-selected span",
+        ".tb-selected a",
+        ".tb-selected",
+        ".SKU--selected",
+        "li.active span",
+        "li.selected span",
+        "li.tb-active",
+        '[aria-selected="true"]',
+        ".sku-item.selected",
+        ".sku-item.active",
+    ]
+    for sel in selected_selectors:
+        try:
+            el = await page.query_selector(sel)
+            if el:
+                name = (await el.inner_text()).strip()[:60]
+                if name:
+                    return name
+        except Exception:
+            continue
+    return ""
+
+
+async def detect_sku_prices(page) -> list:
+    """Click through SKU variant options and capture price for each.
+    Returns list of {sku_name, price} dicts."""
+    results = []
+    clicked_texts = set()
+
+    # Find SKU property groups
+    sku_groups = await page.query_selector_all(
+        ".J_TSaleProp, .tb-prop, .sku-line, ul[data-property], "
+        ".tb-sku, .tb-skin, .J_SKU"
+    )
+
+    # Collect all clickable SKU items from the first valid group
+    sku_items = []
+    for group in sku_groups:
+        items = await group.query_selector_all(
+            "li:not(.tb-out-of-stock):not(.disabled):not(.tb-disable), "
+            "a:not(.tb-out-of-stock), "
+            ".sku-item:not(.disable), "
+            "span[data-value]"
+        )
+        if items and len(items) > 1:
+            sku_items = items
+            break
+
+    # Fallback: look for any SKU-like clickable elements
+    if not sku_items:
+        sku_items = await page.query_selector_all(
+            ".J_TSaleProp li:not(.tb-out-of-stock), "
+            ".tb-prop li:not(.tb-out-of-stock), "
+            "li[data-pv], li[data-sku-id], "
+            "a[data-sku-id]"
+        )
+
+    for item in sku_items:
+        try:
+            name = (await item.inner_text()).strip()[:60]
+            if not name or name in clicked_texts:
+                continue
+            clicked_texts.add(name)
+
+            # Check for disabled/out-of-stock
+            classes = (await item.get_attribute("class")) or ""
+            if any(x in classes for x in ["disabled", "out-of-stock", "tb-out-of-stock"]):
+                continue
+
+            # Scroll into view and click
+            await item.scroll_into_view_if_needed()
+            try:
+                await item.click(timeout=5000)
+            except Exception:
+                # Some items are wrapped - click the inner element
+                inner = await item.query_selector("a, span, div")
+                if inner:
+                    await inner.click(timeout=5000)
+                else:
+                    continue
+
+            # Wait for price to update via JS
+            await page.wait_for_timeout(2500)
+
+            price = await extract_current_price(page)
+            if price:
+                results.append({"sku": name, "price": price})
+        except Exception:
+            continue
+
+    return results
+
+
 async def do_login(page, username, password, sms_code=None):
     print("[login] Loading...", flush=True)
     await page.goto("https://login.taobao.com/", wait_until="domcontentloaded", timeout=30000)
@@ -69,8 +200,8 @@ async def do_login(page, username, password, sms_code=None):
 
 async def parse_product(page, url: str) -> dict:
     print("[parse] Loading product page...", flush=True)
-    await page.goto(url, wait_until="load", timeout=60000)
-    await page.wait_for_timeout(20000)
+    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    await page.wait_for_timeout(5000)
     final_url = page.url
     if "login" in final_url.lower(): return {"need_relogin": True}
     
@@ -130,8 +261,38 @@ async def parse_product(page, url: str) -> dict:
     item_id = ""
     id_m = re.search(r'(?:id=|item/|itemId=)(\d+)', final_url)
     if id_m: item_id = id_m.group(1)
-    
-    return {"ok": True, "title": title, "sku": sku_text, "price": price,
+
+    items = []
+
+    # First: check if URL already targets a specific SKU (user selected variant before sharing)
+    sku_id_from_url = ""
+    sku_id_m = re.search(r'[?&]skuId=(\d+)', final_url)
+    if sku_id_m:
+        sku_id_from_url = sku_id_m.group(1)
+        print(f"[parse] SKU detected in URL: {sku_id_from_url}", flush=True)
+
+    # Try to read the already-selected SKU on the current page
+    selected_sku = await get_selected_sku(page)
+    if selected_sku:
+        current_price = await extract_current_price(page)
+        if current_price:
+            items.append({"sku": selected_sku, "price": current_price})
+            print(f"[parse] Pre-selected SKU: [{selected_sku}] {current_price}", flush=True)
+
+    # If no pre-selected SKU found, click through all variants
+    if not items:
+        print("[parse] No pre-selected SKU, detecting all variants...", flush=True)
+        sku_prices = await detect_sku_prices(page)
+        if sku_prices:
+            for sp in sku_prices:
+                items.append({"sku": sp["sku"], "price": sp["price"]})
+            print(f"[parse] Found {len(items)} SKU variants", flush=True)
+        else:
+            # Last resort: use default price with best-effort SKU name
+            items.append({"sku": sku_text, "price": price})
+            print("[parse] No SKU variants detected, using default price", flush=True)
+
+    return {"ok": True, "title": title, "items": items,
             "shop": shop, "item_id": item_id, "final_url": final_url, "short_url": url}
 
 def append_to_excel(products: list):
@@ -165,25 +326,28 @@ def append_to_excel(products: list):
     today = datetime.now().strftime("%m-%d")
     
     for prod in products:
-        item_name = prod.get("sku", "") or prod.get("title", "")
-        
-        ws.cell(row=next_row, column=1, value=today).font = data_font
-        ws.cell(row=next_row, column=2, value=item_name).font = data_font
-        ws.cell(row=next_row, column=3, value="1").font = data_font
-        ws.cell(row=next_row, column=4, value=prod.get("channel", "Taobao")).font = data_font
-        ws.cell(row=next_row, column=5, value=prod.get("price", "")).font = data_font
-        
         link = prod.get("short_url", "")
-        if link:
-            cell = ws.cell(row=next_row, column=6, value="\u6253\u5f00\u94fe\u63a5")
-            cell.hyperlink = link
-            cell.font = Font(name="Microsoft YaHei", size=11, color="0563C1", underline="single")
-        
-        for col in range(1, 7):
-            c = ws.cell(row=next_row, column=col)
-            c.alignment = Alignment(horizontal='center' if col != 2 else 'left', vertical='center')
-            c.border = thin_border
-        next_row += 1
+        items = prod.get("items", [{"sku": prod.get("sku", ""), "price": prod.get("price", "")}])
+
+        for item in items:
+            item_name = item.get("sku", "") or prod.get("title", "")
+
+            ws.cell(row=next_row, column=1, value=today).font = data_font
+            ws.cell(row=next_row, column=2, value=item_name).font = data_font
+            ws.cell(row=next_row, column=3, value="1").font = data_font
+            ws.cell(row=next_row, column=4, value=prod.get("channel", "Taobao")).font = data_font
+            ws.cell(row=next_row, column=5, value=item.get("price", "")).font = data_font
+
+            if link:
+                cell = ws.cell(row=next_row, column=6, value="\u6253\u5f00\u94fe\u63a5")
+                cell.hyperlink = link
+                cell.font = Font(name="Microsoft YaHei", size=11, color="0563C1", underline="single")
+
+            for col in range(1, 7):
+                c = ws.cell(row=next_row, column=col)
+                c.alignment = Alignment(horizontal='center' if col != 2 else 'left', vertical='center')
+                c.border = thin_border
+            next_row += 1
     
     wb.save(EXCEL_FILE)
     return EXCEL_FILE
@@ -197,14 +361,25 @@ async def main():
     username, password = load_creds()
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+        browser = await p.chromium.launch(headless=True, args=[
+            "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-dev-shm-usage",
+        ])
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}, locale="zh-CN")
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}, locale="zh-CN",
+            extra_http_headers={
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            })
         if COOKIE_FILE.exists():
             try: await context.add_cookies(json.loads(COOKIE_FILE.read_text(encoding="utf-8")))
             except: pass
         page = await context.new_page()
+        # Hide webdriver flag that exposes headless mode
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        """)
         
         login_result = await do_login(page, username, password, sms_code)
         if isinstance(login_result, dict):
@@ -226,13 +401,18 @@ async def main():
             result = await parse_product(page, url)
         
         result["channel"] = "Taobao"
-        
-        if result.get("ok") and (result.get("title") or result.get("sku")):
+
+        items = result.get("items", [])
+        if result.get("ok") and (result.get("title") or items):
             excel_path = append_to_excel([result])
             from openpyxl import load_workbook
             wb = load_workbook(EXCEL_FILE)
             ws = wb.active
-            print(f"Added: row {ws.max_row} -> {EXCEL_FILE.name}", flush=True)
+            print(f"Added {len(items)} row(s) -> {EXCEL_FILE.name}", flush=True)
+            for item in items:
+                sku = item.get("sku", "") or "(default)"
+                price = item.get("price", "?")
+                print(f"  [{sku}] {price}", flush=True)
         else:
             print("ERROR: Failed to parse product.", flush=True)
         
