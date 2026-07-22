@@ -200,8 +200,8 @@ async def do_login(page, username, password, sms_code=None):
 
 async def parse_product(page, url: str) -> dict:
     print("[parse] Loading product page...", flush=True)
-    await page.goto(url, wait_until="load", timeout=60000)
-    await page.wait_for_timeout(20000)
+    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    await page.wait_for_timeout(5000)
     final_url = page.url
     if "login" in final_url.lower(): return {"need_relogin": True}
     
