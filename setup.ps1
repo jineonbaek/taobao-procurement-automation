@@ -6,30 +6,62 @@ Write-Host ""
 
 $cookieOk = Test-Path "data\.taobao_cookies.json"
 
-# Step 1: Python deps
+# Step 1: Python deps + find pip command
 Write-Host "[1/3] Checking Python dependencies..." -ForegroundColor Yellow
-$null = pip show playwright 2>$null; $hasPW = $LASTEXITCODE -eq 0
-$null = pip show openpyxl 2>$null; $hasOP = $LASTEXITCODE -eq 0
+
+# Find working pip command (not always in PATH on Windows)
+$pipCmd = $null
+foreach ($try in @("python -m pip", "py -m pip", "pip3", "pip")) {
+    $null = Invoke-Expression "$try --version 2>&1"; $err = $LASTEXITCODE
+    if ($err -eq 0) { $pipCmd = $try; break }
+}
+if (-not $pipCmd) {
+    Write-Host "      ERROR: Python/pip not found. Install Python 3.10+ from https://python.org" -ForegroundColor Red
+    Write-Host "      Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Yellow
+    Read-Host "Press Enter to close"; exit 1
+}
+# Extract python command from pip command
+$pythonCmd = $pipCmd -replace '\s+-m\s+pip$', ''
+Write-Host "      Using: python=$pythonCmd, pip=$pipCmd" -ForegroundColor DarkGray
+
+$hasPW = $false; $hasOP = $false
+Invoke-Expression "$pipCmd show playwright 2>&1" | Out-Null; if ($LASTEXITCODE -eq 0) { $hasPW = $true }
+Invoke-Expression "$pipCmd show openpyxl 2>&1" | Out-Null; if ($LASTEXITCODE -eq 0) { $hasOP = $true }
+
 if ($hasPW -and $hasOP) {
     Write-Host "      Already installed, skipping." -ForegroundColor Green
 } else {
     Write-Host "      Installing..." -ForegroundColor Yellow
-    pip install playwright openpyxl
+    Invoke-Expression "$pipCmd install playwright openpyxl"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "      ERROR: pip install failed." -ForegroundColor Red
+        Read-Host "Press Enter to close"; exit 1
+    }
     Write-Host "      Done." -ForegroundColor Green
 }
 Write-Host ""
 
 # Step 2: Chromium browser
 Write-Host "[2/3] Checking Chromium browser..." -ForegroundColor Yellow
-$d = Get-ChildItem "$env:LOCALAPPDATA\ms-playwright\chromium-*" -Dir -EA SilentlyContinue | Select -First 1
-if ($d) {
-    Write-Host "      Already installed, skipping." -ForegroundColor Green
-    Write-Host "      Path: $($d.FullName)" -ForegroundColor DarkGray
-} else {
+$msPlaywright = "$env:LOCALAPPDATA\ms-playwright"
+$chromiumFound = $false
+if (Test-Path $msPlaywright) {
+    $d = Get-ChildItem "$msPlaywright\chromium-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($d) {
+        Write-Host "      Already installed, skipping." -ForegroundColor Green
+        Write-Host "      Path: $($d.FullName)" -ForegroundColor DarkGray
+        $chromiumFound = $true
+    }
+}
+if (-not $chromiumFound) {
     Write-Host "      Installing (may take a few minutes)..." -ForegroundColor Yellow
-    python -m playwright install chromium
-    $d = Get-ChildItem "$env:LOCALAPPDATA\ms-playwright\chromium-*" -Dir | Select -First 1
-    Write-Host "      Done. Path: $($d.FullName)" -ForegroundColor Green
+    Invoke-Expression "$pythonCmd -m playwright install chromium"
+    if (Test-Path $msPlaywright) {
+        $d = Get-ChildItem "$msPlaywright\chromium-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($d) { Write-Host "      Done. Path: $($d.FullName)" -ForegroundColor Green }
+    } else {
+        Write-Host "      WARNING: Chromium may not have installed correctly." -ForegroundColor Yellow
+    }
 }
 Write-Host ""
 
@@ -146,7 +178,7 @@ async def main():
 asyncio.run(main())
 '@ | Set-Content -Path "data\_login_test.py" -Encoding utf8
 
-python data\_login_test.py
+Invoke-Expression "$pythonCmd data\_login_test.py"
 Remove-Item data\_login_test.py -Force -ErrorAction SilentlyContinue
 
 if (Test-Path "data\.taobao_cookies.json") {
