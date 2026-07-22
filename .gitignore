@@ -1,0 +1,13 @@
+# Credentials & personal data
+data/
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
