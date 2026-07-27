@@ -1,3 +1,5 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-powershell -ExecutionPolicy Bypass -NoExit -Command "& '%~dp0setup.ps1'"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+endlocal

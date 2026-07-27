@@ -1,18 +1,27 @@
 $workdir = Split-Path $MyInvocation.MyCommand.Path -Parent
 Set-Location $workdir
+$pythonExe = Join-Path $workdir ".venv\Scripts\python.exe"
 
 Write-Host "========================================"  -ForegroundColor Cyan
 Write-Host "  TaoBao Link Parser" -ForegroundColor Cyan
 Write-Host "========================================"  -ForegroundColor Cyan
 Write-Host ""
 
+$runtimeOk = Test-Path $pythonExe
 $envOk = Test-Path "data\.taobao.env"
 $cookieOk = Test-Path "data\.taobao_cookies.json"
+
+if (-not $runtimeOk) {
+    Write-Host "  ERROR: The local Python environment is not configured." -ForegroundColor Red
+    Write-Host "  Run setup.bat first." -ForegroundColor Yellow
+    Read-Host "Press Enter to close"
+    exit 1
+}
 
 if (-not $envOk) {
     Write-Host "  ERROR: Not configured." -ForegroundColor Red
     Write-Host "  Opening setup.bat..." -ForegroundColor Yellow
-    Start-Process "setup.bat"
+    Start-Process (Join-Path $workdir "setup.bat")
     Read-Host "Press Enter to close"
     exit
 }
@@ -23,7 +32,7 @@ if (-not $cookieOk) {
     Write-Host ""
     Write-Host "  Open setup.bat now? (y/n)" -ForegroundColor White
     $answer = Read-Host
-    if ($answer -eq "y") { Start-Process "setup.bat" }
+    if ($answer -eq "y") { Start-Process (Join-Path $workdir "setup.bat") }
     Read-Host "Press Enter to close"
     exit
 }
@@ -41,7 +50,10 @@ while ($true) {
         continue
     }
     Write-Host "Parsing..." -ForegroundColor Yellow
-    python taobao_parser.py $url 2>&1
+    & $pythonExe "taobao_parser.py" $url 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: Parser exited with code $LASTEXITCODE." -ForegroundColor Red
+    }
     Write-Host "----------------------------------------"
     Write-Host ""
 }
