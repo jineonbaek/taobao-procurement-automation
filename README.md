@@ -1,15 +1,93 @@
-# TaoBao Procurement Automation / 淘宝采购清单自动化工具
+<div align="center">
 
-A Windows automation tool that reads a Taobao/Tmall product link, extracts the
-selected color classification and matching price, and appends the result to a
-local Excel procurement list.
+<h1>🛒 TaoBao Procurement Automation</h1>
+<h3>淘宝 / 天猫采购清单自动化工具</h3>
 
-这是一个 Windows 自动化工具：读取淘宝/天猫商品链接，提取已选择的颜色分类及其
-对应价格，并自动追加到本地 Excel 采购清单。
+<p>
+选择商品规格，粘贴链接，自动记录对应的颜色分类与价格。<br>
+Select a product variant, paste its link, and save the matching SKU and price.
+</p>
+
+<p>
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows11&logoColor=white">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Taobao and Tmall" src="https://img.shields.io/badge/Taobao%20%7C%20Tmall-Supported-FF5000">
+  <img alt="Excel output" src="https://img.shields.io/badge/Output-Excel-217346?logo=microsoftexcel&logoColor=white">
+</p>
+
+</div>
 
 ---
 
-## Features / 功能
+## 🚀 快速开始 / Quick Start
+
+> [!IMPORTANT]
+> 目前仅支持 **Windows 10 / 11**。电脑只需要提前安装
+> [Python 3.10 或更高版本](https://www.python.org/downloads/)，安装 Python 时
+> 请勾选 **Add Python to PATH**。其他依赖会由 Setup 自动安装。
+
+### 第一次使用 / First Run
+
+### [⬇️ 下载最新版 ZIP / Download Latest ZIP](https://github.com/jineonbaek/taobao-procurement-automation/archive/refs/heads/master.zip)
+
+| 步骤 | 操作 |
+|---:|---|
+| 1️⃣ | 从 GitHub 下载项目 ZIP，并**完整解压**到普通文件夹。<br>Download the ZIP and extract the whole folder. |
+| 2️⃣ | 双击 **`setup.bat`**。<br>Double-click **`setup.bat`**. |
+| 3️⃣ | 等待程序自动安装环境和 Chromium。首次安装可能需要几分钟。<br>Wait while the local environment and Chromium are installed. |
+| 4️⃣ | 按提示输入淘宝账号；如果出现短信、滑块或身份验证，请在弹出的浏览器中完成。<br>Sign in and finish any verification in the opened browser. |
+
+> [!TIP]
+> 不需要提前安装 Chrome、Edge、Microsoft Excel、Playwright 或 openpyxl。
+> You do not need to preinstall Chrome, Edge, Microsoft Excel, Playwright, or
+> openpyxl.
+
+### 每次使用 / Daily Use
+
+```mermaid
+flowchart LR
+    A["🎨 选择颜色或规格"] --> B["🔗 复制商品链接"]
+    B --> C["▶️ 双击 run.bat"]
+    C --> D["📋 粘贴链接并按回车"]
+    D --> E["📊 写入采购清单.xlsx"]
+```
+
+1. 在淘宝或天猫中先选择需要的**颜色分类 / 商品规格**。
+2. 复制商品链接。
+3. 双击 **`run.bat`**，粘贴链接并按回车。
+4. 在项目文件夹中打开 **`采购清单.xlsx`** 查看结果。
+5. 输入 **`q`** 退出。
+
+### ✅ 输出结果 / Result
+
+```text
+[黑色 12.3英寸 触摸屏] ￥557.98
+```
+
+| 日期 Date | 采购物品 Item | 数量 Qty | 渠道 Source | 价格 Price | 链接 Link |
+|---|---|---|---|---|---|
+| 07-27 | 黑色 12.3英寸 触摸屏 | 1 | Taobao | ￥557.98 | 打开链接 |
+
+> [!WARNING]
+> 付款前请在淘宝 / 天猫中再次确认最终规格和价格。短链接能否保留已选 SKU，
+> 取决于淘宝跳转时是否保留对应信息。
+
+> [!CAUTION]
+> 淘宝账号和登录 Cookie 只保存在本机的 `data/` 中。不要把整个运行后的文件夹
+> 直接发给别人。Your Taobao credentials and cookies stay in the local `data/`
+> folder. Never share the complete folder after running Setup.
+
+---
+
+## 📚 完整说明 / Full Guide
+
+以下内容介绍功能、安装原理、本地文件、隐私保护、卸载和故障排查。<br>
+The sections below keep the full technical, privacy, uninstall, and
+troubleshooting details.
+
+---
+
+## ✨ Features / 功能
 
 | English | 中文 |
 |---|---|
@@ -34,7 +112,30 @@ Example output / 输出示例：
 
 ---
 
-## Supported Platform / 支持平台
+## ⚙️ How It Works / 工作原理
+
+```mermaid
+flowchart LR
+    A["🔗 商品链接"] --> B["🌐 Chromium 打开页面"]
+    B --> C["🍪 复用本地登录状态"]
+    C --> D["🏷️ 定位链接中的 skuId"]
+    D --> E["🎨 匹配颜色分类"]
+    D --> F["💰 读取对应价格"]
+    E --> G["📊 追加到 Excel"]
+    F --> G
+```
+
+`setup.bat` prepares the local runtime once. `run.bat` then opens the link in
+the project Chromium, reuses the saved login cookies, matches the selected SKU,
+reads its current price, and appends one row to the workbook.
+
+`setup.bat` 负责一次性准备本地运行环境。之后 `run.bat` 会使用项目内 Chromium
+打开链接、复用已保存的登录 Cookie、匹配已选 SKU、读取对应价格，并向采购清单
+追加一行。
+
+---
+
+## 🖥️ Supported Platform / 支持平台
 
 This release is designed for:
 
@@ -51,7 +152,7 @@ or Linux.
 
 ---
 
-## Requirements / 环境要求
+## 🧰 Requirements / 环境要求
 
 ### Required before Setup / 运行 Setup 前需要
 
@@ -76,7 +177,7 @@ automatically.
 
 ---
 
-## First-Time Setup / 首次配置
+## 🛠️ First-Time Setup / 首次配置
 
 ### 1. Install Python / 安装 Python
 
@@ -144,7 +245,7 @@ Python 环境和 Chromium 都保存在本项目文件夹内。Setup 不会把 Pl
 
 ---
 
-## What Is `.venv`? / `.venv` 是什么？
+## 📦 What Is `.venv`? / `.venv` 是什么？
 
 `.venv` is the private Python environment created for this project.
 
@@ -178,7 +279,7 @@ Playwright Chromium 单独保存在 `.playwright-browsers` 中，因此删除它
 
 ---
 
-## Daily Use / 日常使用
+## ▶️ Daily Use / 日常使用
 
 Double-click:
 
@@ -210,7 +311,7 @@ preserve the selected SKU if Taobao includes the SKU information in the redirect
 
 ---
 
-## Excel Output / Excel 输出
+## 📊 Excel Output / Excel 输出
 
 The generated workbook is:
 
@@ -230,7 +331,7 @@ The workbook is generated locally and is excluded from Git.
 
 ---
 
-## Project Structure / 项目结构
+## 🗂️ Project Structure / 项目结构
 
 ### Files uploaded to GitHub / 上传到 GitHub 的源码文件
 
@@ -276,7 +377,7 @@ These files are not part of the GitHub repository.
 
 ---
 
-## Security and Privacy / 安全与隐私
+## 🔐 Security and Privacy / 安全与隐私
 
 Important:
 
@@ -316,7 +417,7 @@ __pycache__/
 
 ---
 
-## One-Click Uninstall / 一键卸载
+## 🧹 One-Click Uninstall / 一键卸载
 
 Double-click:
 
@@ -353,7 +454,7 @@ been created by an older version and may be shared by other Playwright projects.
 
 ---
 
-## Reset or Reinstall / 重置或重新安装
+## ♻️ Reset or Reinstall / 重置或重新安装
 
 ### Reset Taobao login / 重置淘宝登录
 
@@ -395,7 +496,7 @@ Then run `setup.bat` again.
 
 ---
 
-## Troubleshooting / 常见问题
+## 🩺 Troubleshooting / 常见问题
 
 | Problem / 问题 | Solution / 解决方法 |
 |---|---|
@@ -411,7 +512,7 @@ Then run `setup.bat` again.
 
 ---
 
-## Manual Command / 手动运行命令
+## ⌨️ Manual Command / 手动运行命令
 
 Daily use should normally start from `run.bat`. For debugging, the equivalent
 manual command is:
@@ -429,7 +530,7 @@ separately.
 
 ---
 
-## GitHub Publishing Checklist / GitHub 上传检查
+## 🚢 GitHub Publishing Checklist / GitHub 上传检查
 
 Before committing or pushing:
 
@@ -453,7 +554,7 @@ Only the source files listed in the Project Structure section should be uploaded
 
 ---
 
-## Notes and Limitations / 注意事项与限制
+## ⚠️ Notes and Limitations / 注意事项与限制
 
 - Taobao/Tmall may change page structures, login rules, or internal APIs.
 - Login automation may occasionally require manual verification.
