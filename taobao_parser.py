@@ -3,15 +3,21 @@ Taobao/Tmall product parser with login support.
 Usage: python taobao_parser.py <url> [sms_code]
 All strings use unicode escapes - no raw Chinese in source.
 """
-import asyncio, sys, json, re, io
+import asyncio, sys, json, re, io, os
 from pathlib import Path
 from datetime import datetime
+
+WORKSPACE = Path(__file__).parent
+os.environ.setdefault(
+    "PLAYWRIGHT_BROWSERS_PATH",
+    str(WORKSPACE / ".playwright-browsers"),
+)
+
 from playwright.async_api import async_playwright
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-WORKSPACE = Path(__file__).parent
 COOKIE_FILE = WORKSPACE / "data/.taobao_cookies.json"
 EXCEL_FILE = WORKSPACE / "\u91c7\u8d2d\u6e05\u5355.xlsx"
 AUTH_URL_MARKERS = (

@@ -60,7 +60,7 @@ or Linux.
 | Python 3.10+ | 安装 Python 时必须勾选 **Add Python to PATH** |
 | Internet connection | 用于安装依赖、下载 Chromium 和访问淘宝 |
 | Taobao account | 建议使用未绑定支付信息的专用账号 |
-| Free disk space | `.venv` 和 Chromium 需要数百 MB 空间 |
+| Free disk space | `.venv` 和 `.playwright-browsers` 需要数百 MB 空间 |
 
 ### Not required / 不需要提前安装
 
@@ -112,7 +112,7 @@ Setup performs the following operations:
 1. Finds a compatible Python 3.10+ installation.
 2. Creates a project-local `.venv`.
 3. Installs packages from `requirements.txt`.
-4. Downloads or checks Playwright Chromium.
+4. Downloads or checks Playwright Chromium in `.playwright-browsers`.
 5. Verifies that Chromium can start.
 6. Requests the Taobao phone number and password.
 7. Opens a visible Chromium window for login and additional verification.
@@ -123,7 +123,7 @@ Setup 会依次执行：
 1. 检测 Python 3.10+。
 2. 在项目内创建 `.venv`。
 3. 根据 `requirements.txt` 安装依赖。
-4. 下载或检查 Playwright Chromium。
+4. 在 `.playwright-browsers` 中下载或检查 Playwright Chromium。
 5. 验证 Chromium 可以正常启动。
 6. 提示输入淘宝手机号和密码。
 7. 打开可见 Chromium 窗口完成登录和额外验证。
@@ -134,6 +134,13 @@ opened Chromium window. The setup waits for up to five minutes.
 
 如果淘宝要求短信、滑块或身份验证，请在打开的 Chromium 窗口内完成。Setup 最多
 等待五分钟。
+
+Both the Python environment and Chromium are stored inside this project. Setup
+does not install Playwright packages or this browser into the global Python
+environment.
+
+Python 环境和 Chromium 都保存在本项目文件夹内。Setup 不会把 Playwright 包或
+这个浏览器安装到全局 Python 环境。
 
 ---
 
@@ -162,6 +169,12 @@ does not modify the global Python packages installed on the computer.
 - Used automatically by `run.bat` / 由 `run.bat` 自动调用
 - Excluded from GitHub by `.gitignore` / 已通过 `.gitignore` 排除
 - Safe to delete, but Setup must be run again afterward / 可以删除，但删除后必须重新运行 Setup
+
+Playwright Chromium is stored separately in `.playwright-browsers` so it can be
+removed safely without affecting browsers used by other projects.
+
+Playwright Chromium 单独保存在 `.playwright-browsers` 中，因此删除它不会影响
+其他项目使用的浏览器。
 
 ---
 
@@ -230,6 +243,8 @@ purchase workflow/
 ├── setup.ps1
 ├── run.bat
 ├── run.ps1
+├── uninstall.bat
+├── uninstall.ps1
 └── taobao_parser.py
 ```
 
@@ -239,6 +254,8 @@ purchase workflow/
 | `setup.ps1` | Creates `.venv`, installs dependencies, and configures login / 创建环境、安装依赖并配置登录 |
 | `run.bat` | Double-click entry for daily use / 日常使用双击入口 |
 | `run.ps1` | Validates local configuration and starts the parser / 检查本地配置并启动解析器 |
+| `uninstall.bat` | Double-click entry for uninstalling local runtime files / 一键卸载本地运行文件 |
+| `uninstall.ps1` | Safely removes only selected files inside this project / 仅安全删除本项目内选定的文件 |
 | `taobao_parser.py` | Taobao/Tmall parsing and Excel output / 淘宝天猫解析与 Excel 输出 |
 | `requirements.txt` | Python dependency list / Python 依赖列表 |
 | `.gitignore` | Prevents private/runtime files from being uploaded / 防止隐私和运行文件被上传 |
@@ -247,6 +264,7 @@ purchase workflow/
 
 ```text
 .venv/                         Project Python environment / 项目 Python 环境
+.playwright-browsers/          Project Chromium browser / 项目专用 Chromium 浏览器
 data/.taobao.env               Taobao credentials / 淘宝账号密码
 data/.taobao_cookies.json      Login cookies / 登录 Cookie
 采购清单.xlsx                   Output workbook / 输出采购清单
@@ -281,6 +299,7 @@ The `.gitignore` file excludes:
 ```text
 data/
 .venv/
+.playwright-browsers/
 *.xlsx
 .claude/
 .vscode/
@@ -289,10 +308,48 @@ __pycache__/
 ```
 
 > `.gitignore` protects Git uploads only. If you manually ZIP the entire project
-> folder, delete `data/`, `.venv/`, and private Excel files before sharing.
+> folder, delete `data/`, `.venv/`, `.playwright-browsers/`, and private Excel
+> files before sharing.
 >
 > `.gitignore` 只保护 Git 上传。如果直接压缩整个项目文件夹发送给别人，请先删除
-> `data/`、`.venv/` 和私人 Excel 文件。
+> `data/`、`.venv/`、`.playwright-browsers/` 和私人 Excel 文件。
+
+---
+
+## One-Click Uninstall / 一键卸载
+
+Double-click:
+
+```text
+uninstall.bat
+```
+
+Choose one of these modes:
+
+1. **Safe uninstall (recommended):** removes `.venv`,
+   `.playwright-browsers`, credentials, and login cookies, but keeps
+   `采购清单.xlsx`.
+2. **Full cleanup:** removes everything above and also deletes
+   `采购清单.xlsx`.
+
+Then type `UNINSTALL` exactly to confirm. Source files such as `.py`, `.ps1`,
+`.bat`, and `README.md` are always kept. Run `setup.bat` later to reinstall the
+local environment.
+
+双击 `uninstall.bat` 后可选择：
+
+1. **安全卸载（推荐）：**删除 `.venv`、`.playwright-browsers`、淘宝账号密码和
+   登录 Cookie，但保留 `采购清单.xlsx`。
+2. **彻底清理：**在上述基础上同时删除 `采购清单.xlsx`。
+
+随后必须准确输入 `UNINSTALL` 才会执行。`.py`、`.ps1`、`.bat` 和 `README.md`
+等源码始终保留；以后重新双击 `setup.bat` 即可安装。
+
+The uninstaller does not remove `%LOCALAPPDATA%\ms-playwright`, which may have
+been created by an older version and may be shared by other Playwright projects.
+
+卸载程序不会删除旧版本可能创建的 `%LOCALAPPDATA%\ms-playwright`，因为该目录
+可能被其他 Playwright 项目共用。
 
 ---
 
@@ -322,17 +379,19 @@ Then run `setup.bat` again.
 
 删除整个 `data/` 文件夹，然后重新运行 `setup.bat`。
 
-### Rebuild the Python environment / 重建 Python 环境
+### Rebuild the local runtime / 重建本地运行环境
 
 Delete:
 
 ```text
 .venv/
+.playwright-browsers/
 ```
 
 Then run `setup.bat` again.
 
-删除 `.venv`，然后重新运行 `setup.bat`。
+删除 `.venv` 和 `.playwright-browsers`，然后重新运行 `setup.bat`。也可以直接
+运行 `uninstall.bat` 并选择安全卸载。
 
 ---
 
@@ -346,6 +405,7 @@ Then run `setup.bat` again.
 | Chromium verification window appeared / 出现淘宝验证窗口 | Complete SMS, slider, or identity verification in the opened window / 在窗口内完成短信、滑块或身份验证 |
 | Login expired / 登录失效 | Delete `data/.taobao_cookies.json` and rerun Setup / 删除 Cookie 文件并重新运行 Setup |
 | `run.bat` reports that the local environment is missing / Run 提示本地环境不存在 | Run `setup.bat` first / 先运行 Setup |
+| `run.bat` reports that the browser is missing / Run 提示浏览器不存在 | Run `setup.bat` again / 重新运行 Setup |
 | Product page loads slowly / 商品页面加载很慢 | Check the internet connection and try without VPN / 检查网络并尝试关闭 VPN |
 | Selected color cannot be mapped / 无法识别已选颜色 | Confirm that the copied link contains a valid `skuId`, then copy the link again after selecting the SKU / 确认链接包含有效 `skuId`，选择规格后重新复制 |
 
@@ -376,6 +436,7 @@ Before committing or pushing:
 - Confirm that `git status` does not include `data/`.
 - Confirm that no `.xlsx` file is staged.
 - Confirm that `.venv/` is not staged.
+- Confirm that `.playwright-browsers/` is not staged.
 - Confirm that no phone number, password, or Cookie is hard-coded in source files.
 
 提交或推送前请确认：
@@ -383,6 +444,7 @@ Before committing or pushing:
 - `git status` 中没有 `data/`。
 - 没有暂存任何 `.xlsx` 文件。
 - 没有暂存 `.venv/`。
+- 没有暂存 `.playwright-browsers/`。
 - 源码中没有硬编码手机号、密码或 Cookie。
 
 Only the source files listed in the Project Structure section should be uploaded.

@@ -1,6 +1,8 @@
 $workdir = Split-Path $MyInvocation.MyCommand.Path -Parent
 Set-Location $workdir
 $pythonExe = Join-Path $workdir ".venv\Scripts\python.exe"
+$browserDir = Join-Path $workdir ".playwright-browsers"
+$env:PLAYWRIGHT_BROWSERS_PATH = $browserDir
 
 Write-Host "========================================"  -ForegroundColor Cyan
 Write-Host "  TaoBao Link Parser" -ForegroundColor Cyan
@@ -8,11 +10,19 @@ Write-Host "========================================"  -ForegroundColor Cyan
 Write-Host ""
 
 $runtimeOk = Test-Path $pythonExe
+$browserOk = Test-Path $browserDir
 $envOk = Test-Path "data\.taobao.env"
 $cookieOk = Test-Path "data\.taobao_cookies.json"
 
 if (-not $runtimeOk) {
     Write-Host "  ERROR: The local Python environment is not configured." -ForegroundColor Red
+    Write-Host "  Run setup.bat first." -ForegroundColor Yellow
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
+if (-not $browserOk) {
+    Write-Host "  ERROR: The project Chromium browser is not installed." -ForegroundColor Red
     Write-Host "  Run setup.bat first." -ForegroundColor Yellow
     Read-Host "Press Enter to close"
     exit 1

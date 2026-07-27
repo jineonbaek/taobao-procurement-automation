@@ -1,6 +1,8 @@
 # Setup - TaoBao Procurement Automation (Windows)
 $workdir = Split-Path $MyInvocation.MyCommand.Path -Parent
 Set-Location $workdir
+$browserDir = Join-Path $workdir ".playwright-browsers"
+$env:PLAYWRIGHT_BROWSERS_PATH = $browserDir
 
 function Stop-Setup {
     param([string]$Message)
@@ -84,6 +86,7 @@ if ($LASTEXITCODE -ne 0) {
     Stop-Setup "Chromium was downloaded but could not start."
 }
 Write-Host "      Chromium is ready." -ForegroundColor Green
+Write-Host "      Path: $browserDir" -ForegroundColor DarkGray
 Write-Host ""
 
 # Step 3: Configure Taobao login.
